@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>เกม AR ฝึกพูดภาษาอังกฤษสำหรับเด็กประถม - Speech AR Quest</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Mitr -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Canvas Confetti CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <!-- MediaPipe Camera & Face Mesh CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+        * {
+            font-family: 'Mitr', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* Fullscreen lock and cute pastel gradient background */
+        body {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #fecfef 100%);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Glassmorphic UI Containers */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1.5px solid rgba(255, 255, 255, 0.8);
+        }
+
+        /* Pulse & Float Animations */
+        @keyframes gentle-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .animate-pulse-slow {
+            animation: gentle-pulse 2s infinite ease-in-out;
+        }
+
+        @keyframes float-up {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .animate-float {
+            animation: float-up 3s infinite ease-in-out;
+        }
+
+        /* Mirrored Video & Canvas Overlay */
+        .mirror-container {
+            transform: scaleX(-1);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden text-slate-800 flex items-center justify-center p-2 sm:p-4">
+
+    <!-- MAIN RESPONSIVE CONTAINER (Left: UI, Right: AR Camera) -->
+    <main class="w-full h-full max-w-7xl mx-auto flex flex-col md:flex-row gap-3 sm:gap-4 relative z-10">
+
+        <!-- LEFT SIDE: GAMEPLAY UI PANEL -->
+        <section class="w-full md:w-1/2 h-1/2 md:h-full glass-panel rounded-3xl p-4 sm:p-6 flex flex-col justify-between relative overflow-hidden">
+            
+            <!-- Header: Question Counter & Total Score -->
+            <div class="flex items-center justify-between w-full z-10">
+                <!-- Question Counter -->
+                <div class="glass-card px-4 py-2 rounded-2xl flex items-center gap-2 border border-pink-200 shadow-sm">
+                    <i class="fa-solid fa-list-check text-pink-500 text-lg"></i>
+                    <div>
+                        <span class="text-[10px] text-slate-500 uppercase block leading-none font-medium">คำศัพท์ข้อที่</span>
+                        <span id="ui-current-question" class="text-base sm:text-lg font-bold text-pink-600">1 / 10</span>
+                    </div>
+                </div>
+
+                <!-- Game Title Badge -->
+                <div class="hidden sm:flex items-center gap-2 bg-gradient-to-r from-pink-500 to-orange-400 text-white px-4 py-1.5 rounded-full shadow-md text-xs font-semibold">
+                    <span>✨ Speech AR Quest</span>
+                </div>
+
+                <!-- Total Score Badge -->
+                <div class="glass-card px-4 py-2 rounded-2xl flex items-center gap-2 border border-amber-200 shadow-sm">
+                    <i class="fa-solid fa-star text-amber-400 text-lg"></i>
+                    <div>
+                        <span class="text-[10px] text-slate-500 uppercase block leading-none font-medium">คะแนนรวม</span>
+                        <span id="ui-total-score" class="text-base sm:text-lg font-bold text-amber-500">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle: Main Vocabulary Word Showcase -->
+            <div class="my-auto text-center flex flex-col items-center justify-center z-10 py-2">
+                <!-- Status Badge (e.g. เตรียมตัว..., พูดเลย!, ตรวจสอบ) -->
+                <div id="ui-status-badge" class="inline-flex items-center gap-2 bg-amber-100 text-amber-700 border border-amber-300 font-medium px-4 py-1.5 rounded-full text-xs sm:text-sm mb-3 shadow-sm transition-all duration-300 animate-pulse-slow">
+                    <i class="fa-solid fa-hourglass-start"></i>
+                    <span id="ui-status-text">พร้อมเริ่มต้น...</span>
+                </div>
+
+                <!-- Big Target Vocabulary Text -->
+                <h1 id="ui-vocab-word" class="text-4xl sm:text-6xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-rose-500 to-orange-500 tracking-wide drop-shadow-sm transition-all duration-300 my-1">
+                    READY
+                </h1>
+
+                <!-- Thai Translation -->
+                <p id="ui-vocab-translation" class="text-base sm:text-xl text-slate-600 font-normal mt-1">
+                    เตรียมตัวแข่งขัน
+                </p>
+
+                <!-- Speech Recognition Feedback Result Display -->
+                <div id="ui-speech-result-box" class="mt-3 min-h-[36px] max-w-md w-full px-4 py-1.5 rounded-xl bg-white/60 border border-slate-200 text-slate-700 text-xs sm:text-sm font-medium flex items-center justify-center gap-2 transition-all">
+                    <i class="fa-solid fa-microphone-lines text-pink-400"></i>
+                    <span id="ui-speech-recognized-text" class="italic text-slate-500">เสียงที่ได้ยินจะแสดงที่นี่...</span>
+                </div>
+            </div>
+
+            <!-- Bottom: Accuracy Meter Bar & Countdown Timer -->
+            <div class="w-full space-y-2 z-10">
+                <div class="flex justify-between items-center text-xs sm:text-sm font-medium text-slate-700 px-1">
+                    <span class="flex items-center gap-1.5">
+                        <i class="fa-solid fa-bullseye text-pink-500"></i> ความแม่นยำ (Accuracy):
+                    </span>
+                    <span id="ui-accuracy-percent" class="font-bold text-pink-600 text-base">0%</span>
+                </div>
+
+                <!-- Accuracy Progress Bar -->
+                <div class="w-full h-5 sm:h-6 bg-slate-200/80 rounded-full p-1 shadow-inner relative overflow-hidden">
+                    <div id="ui-accuracy-bar" class="h-full w-0 bg-gradient-to-r from-pink-500 to-orange-400 rounded-full transition-all duration-500 ease-out"></div>
+                    <!-- 80% Passing Threshold Target Marker Indicator -->
+                    <div class="absolute top-0 bottom-0 left-[80%] w-0.5 bg-slate-800/40 z-20" title="เกณฑ์ผ่าน 80%"></div>
+                </div>
+
+                <div class="flex justify-between items-center text-[11px] text-slate-500 px-1 pt-0.5">
+                    <span>เกณฑ์ผ่าน 80% ขึ้นไป</span>
+                    <span id="ui-timer-text" class="font-bold text-slate-600">เวลาพูด: 5 วินาที</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT SIDE: CAMERA VIEWPORT & AR CANVAS OVERLAY -->
+        <section class="w-full md:w-1/2 h-1/2 md:h-full glass-panel rounded-3xl p-2 sm:p-3 relative overflow-hidden flex items-center justify-center">
+            
+            <div class="relative w-full h-full rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center shadow-inner">
+                <!-- Webcam Video Element -->
+                <video id="webcam-video" class="absolute inset-0 w-full h-full object-cover mirror-container" playsinline muted></video>
+                
+                <!-- AR Overlay Canvas -->
+                <canvas id="ar-canvas" class="absolute inset-0 w-full h-full object-cover mirror-container z-10"></canvas>
+
+                <!-- Camera Loading Spinner Overlay -->
+                <div id="camera-loading-overlay" class="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center text-white z-20 transition-opacity duration-300">
+                    <i class="fa-solid fa-circle-notch fa-spin text-4xl text-pink-500 mb-3"></i>
+                    <p class="text-sm font-medium text-pink-200">กำลังเปิดกล้องและโหลดระบบ AR...</p>
+                </div>
+
+                <!-- Live Camera Indicator Badge -->
+                <div class="absolute top-3 right-3 z-20 bg-slate-900/70 backdrop-blur-md border border-slate-700/60 text-emerald-400 text-[11px] font-semibold px-3 py-1 rounded-full flex items-center gap-2 shadow-md">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span>กล้องถ่ายทอดสด AR</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL 1: START SCREEN OVERLAY -->
+    <div id="overlay-start-screen" class="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md rounded-3xl p-6 text-center border-2 border-white/80 shadow-2xl animate-float">
+            
+            <div class="w-20 h-20 bg-gradient-to-tr from-pink-500 to-orange-400 rounded-3xl mx-auto flex items-center justify-center text-white text-4xl shadow-lg shadow-pink-500/30 mb-4 transform -rotate-3">
+                👑
+            </div>
+
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-orange-500 mb-2">
+                เกม AR ฝึกพูดภาษาอังกฤษ
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-600 mb-6 font-normal leading-relaxed">
+                เรียนรู้คำศัพท์ภาษาอังกฤษแบบสนุกสนาน! ฝึกพูดออกเสียงให้ถูกต้องเพื่อรับ "มงกุฎเจ้าแห่งคำศัพท์" หรือระวังจะถูกแปลงร่างเป็นปีศาจ!
+            </p>
+
+            <div class="bg-amber-50/80 rounded-2xl p-3 border border-amber-200/80 text-left text-xs text-amber-800 mb-6 space-y-1">
+                <div class="font-bold flex items-center gap-1.5 text-amber-900">
+                    <i class="fa-solid fa-camera"></i> ข้อแนะนำก่อนเริ่มเล่น:
+                </div>
+                <p>• กรุณากด "อนุญาต" การใช้งานกล้องและไมโครโฟน</p>
+                <p>• ออกเสียงภาษาอังกฤษให้ชัดเจนใกล้ไมโครโฟน</p>
+            </div>
+
+            <button id="btn-start-game" onclick="initAndStartGame()" class="w-full bg-gradient-to-r from-pink-500 via-rose-500 to-orange-400 hover:from-pink-600 hover:to-orange-500 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-pink-500/30 transition-all duration-300 transform active:scale-95 flex items-center justify-center gap-2 text-base">
+                <i class="fa-solid fa-play"></i> เริ่มเล่นเกมกันเลย!
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL 2: END GAME SUMMARY SCREEN OVERLAY -->
+    <div id="overlay-end-screen" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-panel w-full max-w-md rounded-3xl p-6 text-center border-2 border-white/80 shadow-2xl relative">
+            
+            <!-- Result Emoji Badge -->
+            <div id="end-result-emoji" class="text-6xl mb-2 animate-bounce">
+                🎉
+            </div>
+
+            <h2 id="end-title-text" class="text-2xl sm:text-3xl font-extrabold text-slate-800">
+                สรุปผลคะแนน
+            </h2>
+            <p id="end-subtitle-text" class="text-xs sm:text-sm text-slate-600 mt-1 mb-4">
+                คุณทำคะแนนได้ยอดเยี่ยมมาก!
+            </p>
+
+            <!-- Big Final Score Card -->
+            <div class="bg-gradient-to-br from-pink-50 to-orange-50 rounded-2xl p-4 border border-pink-200/80 my-4">
+                <span class="text-xs text-slate-500 font-medium block">คะแนนของคุณ</span>
+                <span id="end-final-score" class="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-orange-500">
+                    8 / 10
+                </span>
+            </div>
+
+            <!-- Restart Button -->
+            <button onclick="restartGame()" class="w-full bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-pink-500/30 transition-all duration-300 transform active:scale-95 flex items-center justify-center gap-2 text-base mt-2">
+                <i class="fa-solid fa-rotate-right"></i> เล่นใหม่อีกครั้ง
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* =========================================================================
+           1. WEB AUDIO API SYNTHESIZER (No external sound files required)
+           ========================================================================= */
+        const SoundFX = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            },
+            playClick() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.08);
+            },
+            playTick() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(600, now);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.1);
+            },
+            playGo() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now); // A5
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.25);
+            },
+            playCorrect() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                // Play Arpeggio C5 -> E5 -> G5 -> C6
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(659.25, now + 0.1);
+                osc.frequency.setValueAtTime(783.99, now + 0.2);
+                osc.frequency.setValueAtTime(1046.50, now + 0.3);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.5);
+            },
+            playWrong() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.setValueAtTime(130, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.4);
+            },
+            playWarning() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.setValueAtTime(350, now + 0.12);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.3);
+            },
+            playFanfare() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.50, 880, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.12);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.25);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.12);
+                    osc.stop(now + idx * 0.12 + 0.25);
+                });
+            },
+            playGameOver() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const notes = [400, 350, 300, 250];
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.2);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.2 + 0.35);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.2);
+                    osc.stop(now + idx * 0.2 + 0.35);
+                });
+            }
+        };
+
+        /* =========================================================================
+           2. VOCABULARY DATASET & GAME STATE MANAGEMENT
+           ========================================================================= */
+        const VOCABULARY_LIST = [
+            { word: 'Apple', translation: 'แอปเปิ้ล' },
+            { word: 'Banana', translation: 'กล้วย' },
+            { word: 'Cat', translation: 'แมว' },
+            { word: 'Dog', translation: 'สุนัข' },
+            { word: 'Elephant', translation: 'ช้าง' },
+            { word: 'Fish', translation: 'ปลา' },
+            { word: 'Giraffe', translation: 'ยีราฟ' },
+            { word: 'House', translation: 'บ้าน' },
+            { word: 'Ice cream', translation: 'ไอศกรีม' },
+            { word: 'Monkey', translation: 'ลิง' }
+        ];
+
+        let currentQuestionIndex = 0;
+        let totalScore = 0;
+        let isGameRunning = false;
+        let isListening = false;
+        let countdownInterval = null;
+        let speechTimeout = null;
+
+        // Current AR Effect Mode: 'none' | 'crown' | 'horns'
+        let currentAREffect = 'none';
+        let faceLandmarksData = null;
+
+        /* =========================================================================
+           3. STRING SIMILARITY SCORE CALCULATOR (Levenshtein Distance)
+           ========================================================================= */
+        function calculateStringSimilarity(str1, str2) {
+            if (!str1 || !str2) return 0;
+            const s1 = str1.toLowerCase().trim();
+            const s2 = str2.toLowerCase().trim();
+
+            if (s1 === s2) return 100;
+
+            const track = Array(s2.length + 1).fill(null).map(() =>
+                Array(s1.length + 1).fill(null));
+
+            for (let i = 0; i <= s1.length; i += 1) track[0][i] = i;
+            for (let j = 0; j <= s2.length; j += 1) track[j][0] = j;
+
+            for (let j = 1; j <= s2.length; j += 1) {
+                for (let i = 1; i <= s1.length; i += 1) {
+                    const indicator = s1[i - 1] === s2[j - 1] ? 0 : 1;
+                    track[j][i] = Math.min(
+                        track[j][i - 1] + 1,
+                        track[j - 1][i] + 1,
+                        track[j - 1][i - 1] + indicator
+                    );
+                }
+            }
+
+            const distance = track[s2.length][s1.length];
+            const maxLength = Math.max(s1.length, s2.length);
+            const similarity = ((maxLength - distance) / maxLength) * 100;
+            return Math.max(0, Math.round(similarity));
+        }
+
+        /* =========================================================================
+           4. WEB SPEECH API INITIALIZATION & HANDLERS
+           ========================================================================= */
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+        } else {
+            alert('เบราว์เซอร์ของคุณไม่รองรับ Web Speech API กรุณาใช้ Google Chrome บนคอมพิวเตอร์หรือ Android ครับ');
+        }
+
+        /* =========================================================================
+           5. MEDIAPIPE FACE MESH & AR CANVAS ENGINE
+           ========================================================================= */
+        const videoElement = document.getElementById('webcam-video');
+        const canvasElement = document.getElementById('ar-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function onFaceMeshResults(results) {
+            // Hide camera loading overlay once first frame is processed
+            document.getElementById('camera-loading-overlay').classList.add('opacity-0', 'pointer-events-none');
+
+            // Resize canvas to match video dimensions dynamically
+            canvasElement.width = videoElement.videoWidth || 640;
+            canvasElement.height = videoElement.videoHeight || 480;
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                faceLandmarksData = results.multiFaceLandmarks[0];
+
+                // Render active AR filter based on gameplay state
+                if (currentAREffect === 'crown') {
+                    drawCrownAR(faceLandmarksData);
+                } else if (currentAREffect === 'horns') {
+                    drawHornsAR(faceLandmarksData);
+                    drawVignetteEffect();
+                }
+            } else {
+                faceLandmarksData = null;
+            }
+
+            canvasCtx.restore();
+        }
+
+        // Initialize MediaPipe Face Mesh
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        faceMesh.onResults(onFaceMeshResults);
+
+        // Draw 2D Crown Filter on Forehead
+        function drawCrownAR(landmarks) {
+            // Landmark 10: Top of forehead center
+            // Landmark 21: Left forehead boundary
+            // Landmark 251: Right forehead boundary
+            const forehead = landmarks[10];
+            const leftForehead = landmarks[21];
+            const rightForehead = landmarks[251];
+
+            const x = forehead.x * canvasElement.width;
+            const y = forehead.y * canvasElement.height;
+
+            const width = Math.hypot(
+                (rightForehead.x - leftForehead.x) * canvasElement.width,
+                (rightForehead.y - leftForehead.y) * canvasElement.height
+            ) * 1.8;
+
+            const crownHeight = width * 0.7;
+
+            canvasCtx.save();
+            canvasCtx.translate(x, y - crownHeight * 0.5);
+
+            // Draw Crown Base Path
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(-width / 2, 0);
+            canvasCtx.lineTo(-width / 2, -crownHeight * 0.7);
+            canvasCtx.lineTo(-width / 4, -crownHeight * 0.4);
+            canvasCtx.lineTo(0, -crownHeight);
+            canvasCtx.lineTo(width / 4, -crownHeight * 0.4);
+            canvasCtx.lineTo(width / 2, -crownHeight * 0.7);
+            canvasCtx.lineTo(width / 2, 0);
+            canvasCtx.closePath();
+
+            // Gold Gradient Fill
+            const grad = canvasCtx.createLinearGradient(0, -crownHeight, 0, 0);
+            grad.addColorStop(0, '#FFE066');
+            grad.addColorStop(0.5, '#FFCC00');
+            grad.addColorStop(1, '#FF9900');
+            canvasCtx.fillStyle = grad;
+            canvasCtx.fill();
+
+            canvasCtx.lineWidth = 4;
+            canvasCtx.strokeStyle = '#FFFFFF';
+            canvasCtx.stroke();
+
+            // Crown Jewels Circles
+            const jewelPoints = [
+                { x: -width / 2, y: -crownHeight * 0.7, color: '#FF3366' },
+                { x: 0, y: -crownHeight, color: '#33CCFF' },
+                { x: width / 2, y: -crownHeight * 0.7, color: '#FF3366' }
+            ];
+
+            jewelPoints.forEach(pt => {
+                canvasCtx.beginPath();
+                canvasCtx.arc(pt.x, pt.y, width * 0.08, 0, Math.PI * 2);
+                canvasCtx.fillStyle = pt.color;
+                canvasCtx.fill();
+                canvasCtx.strokeStyle = '#FFFFFF';
+                canvasCtx.lineWidth = 2;
+                canvasCtx.stroke();
+            });
+
+            canvasCtx.restore();
+        }
+
+        // Draw 2D Red Devil Horns AR Filter
+        function drawHornsAR(landmarks) {
+            const leftHornBase = landmarks[104];
+            const rightHornBase = landmarks[333];
+
+            const drawSingleHorn = (basePoint, isLeft) => {
+                const x = basePoint.x * canvasElement.width;
+                const y = basePoint.y * canvasElement.height;
+                const size = 50;
+
+                canvasCtx.save();
+                canvasCtx.translate(x, y);
+
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(0, 0);
+                canvasCtx.quadraticCurveTo(
+                    isLeft ? -size * 0.8 : size * 0.8, -size * 0.8,
+                    isLeft ? -size * 0.5 : size * 0.5, -size * 1.2
+                );
+                canvasCtx.quadraticCurveTo(
+                    isLeft ? -size * 0.1 : size * 0.1, -size * 0.5,
+                    0, 0
+                );
+
+                const grad = canvasCtx.createLinearGradient(0, -size * 1.2, 0, 0);
+                grad.addColorStop(0, '#FF0033');
+                grad.addColorStop(1, '#990000');
+                canvasCtx.fillStyle = grad;
+                canvasCtx.fill();
+
+                canvasCtx.lineWidth = 3;
+                canvasCtx.strokeStyle = '#FF6666';
+                canvasCtx.stroke();
+
+                canvasCtx.restore();
+            };
+
+            drawSingleHorn(leftHornBase, true);
+            drawSingleHorn(rightHornBase, false);
+        }
+
+        // Draw Dark Vignette Effect for Failure Mode
+        function drawVignetteEffect() {
+            const width = canvasElement.width;
+            const height = canvasElement.height;
+
+            const outerRadius = Math.sqrt(Math.pow(width / 2, 2) + Math.pow(height / 2, 2));
+            const gradient = canvasCtx.createRadialGradient(
+                width / 2, height / 2, outerRadius * 0.4,
+                width / 2, height / 2, outerRadius
+            );
+
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            gradient.addColorStop(0.7, 'rgba(80, 0, 0, 0.4)');
+            gradient.addColorStop(1, 'rgba(150, 0, 0, 0.85)');
+
+            canvasCtx.fillStyle = gradient;
+            canvasCtx.fillRect(0, 0, width, height);
+        }
+
+        /* =========================================================================
+           6. MAIN GAME FLOW ENGINE & TURN LOGIC
+           ========================================================================= */
+        async function initAndStartGame() {
+            SoundFX.playClick();
+
+            // Request Camera Access and Start MediaPipe Camera Utility
+            try {
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await faceMesh.send({ image: videoElement });
+                    },
+                    width: 640,
+                    height: 480
+                });
+                await camera.start();
+            } catch (err) {
+                alert('ไม่สามารถเข้าถึงกล้องถ่ายรูปได้ กรุณาเปิดสิทธิ์การใช้งานกล้องในเบราว์เซอร์ของคุณ');
+                return;
+            }
+
+            document.getElementById('overlay-start-screen').classList.add('hidden');
+            currentQuestionIndex = 0;
+            totalScore = 0;
+            updateTopHeaderUI();
+            
+            startVocabularyTurn();
+        }
+
+        function updateTopHeaderUI() {
+            document.getElementById('ui-current-question').innerText = `${currentQuestionIndex + 1} / ${VOCABULARY_LIST.length}`;
+            document.getElementById('ui-total-score').innerText = totalScore;
+        }
+
+        function startVocabularyTurn() {
+            if (currentQuestionIndex >= VOCABULARY_LIST.length) {
+                finishGameAndShowSummary();
+                return;
+            }
+
+            updateTopHeaderUI();
+            currentAREffect = 'none';
+
+            const currentVocab = VOCABULARY_LIST[currentQuestionIndex];
+            document.getElementById('ui-vocab-word').innerText = currentVocab.word;
+            document.getElementById('ui-vocab-translation').innerText = currentVocab.translation;
+            
+            // Reset Accuracy Bar and Recognized text
+            updateAccuracyBarUI(0, 'pink');
+            document.getElementById('ui-speech-recognized-text').innerText = 'เสียงที่ได้ยินจะแสดงที่นี่...';
+            document.getElementById('ui-speech-recognized-text').className = 'italic text-slate-500';
+
+            // Phase 1: Countdown 3.. 2.. 1..
+            runPreparationCountdown(3, () => {
+                // Phase 2: Start Listening for 5 Seconds
+                startListeningPhase();
+            });
+        }
+
+        function runPreparationCountdown(seconds, onComplete) {
+            let count = seconds;
+            updateStatusBadgeUI('เตรียมตัว...', 'amber', 'fa-hourglass-start');
+            document.getElementById('ui-timer-text').innerText = `เตรียมตัว: ${count}`;
+            SoundFX.playTick();
+
+            clearInterval(countdownInterval);
+            countdownInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    SoundFX.playTick();
+                    document.getElementById('ui-timer-text').innerText = `เตรียมตัว: ${count}`;
+                } else {
+                    clearInterval(countdownInterval);
+                    onComplete();
+                }
+            }, 1000);
+        }
+
+        function startListeningPhase() {
+            if (!recognition) {
+                alert('ระบบ Speech Recognition ไม่พร้อมใช้งาน');
+                return;
+            }
+
+            SoundFX.playGo();
+            updateStatusBadgeUI('พูดเลย!', 'emerald', 'fa-microphone');
+            isListening = true;
+
+            let speechRecorded = '';
+            let secondsLeft = 5;
+            document.getElementById('ui-timer-text').innerText = `เวลาพูด: ${secondsLeft} วินาที`;
+
+            // Start Speech Recognition
+            try {
+                recognition.start();
+            } catch (e) {
+                // Recognition might already be running
+            }
+
+            recognition.onresult = (event) => {
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    speechRecorded = event.results[i][0].transcript;
+                }
+                document.getElementById('ui-speech-recognized-text').innerText = `"${speechRecorded}"`;
+                document.getElementById('ui-speech-recognized-text').className = 'font-bold text-slate-800';
+            };
+
+            // 5-second countdown for listening window
+            clearInterval(countdownInterval);
+            countdownInterval = setInterval(() => {
+                secondsLeft--;
+                if (secondsLeft > 0) {
+                    document.getElementById('ui-timer-text').innerText = `เวลาพูด: ${secondsLeft} วินาที`;
+                } else {
+                    clearInterval(countdownInterval);
+                    stopListeningAndEvaluate(speechRecorded);
+                }
+            }, 1000);
+        }
+
+        function stopListeningAndEvaluate(speechText) {
+            isListening = false;
+            try {
+                recognition.stop();
+            } catch (e) {}
+
+            const targetWord = VOCABULARY_LIST[currentQuestionIndex].word;
+            
+            // Case 1: No Speech Detected
+            if (!speechText || speechText.trim() === '') {
+                SoundFX.playWarning();
+                updateStatusBadgeUI('ไม่ได้ยินเสียง!', 'amber', 'fa-triangle-exclamation');
+                document.getElementById('ui-speech-recognized-text').innerText = 'ไม่ได้ยินเสียงพูดของคุณ';
+                document.getElementById('ui-speech-recognized-text').className = 'italic text-amber-600 font-medium';
+
+                // Re-try current question without penalty
+                setTimeout(() => {
+                    startVocabularyTurn();
+                }, 2500);
+                return;
+            }
+
+            // Calculate Similarity Percentage
+            const accuracyScore = calculateStringSimilarity(targetWord, speechText);
+            
+            // Evaluate Pass / Fail (Threshold 80%)
+            if (accuracyScore >= 80) {
+                // SUCCESS PASS
+                SoundFX.playCorrect();
+                totalScore += 1;
+                updateTopHeaderUI();
+                
+                currentAREffect = 'crown';
+                updateAccuracyBarUI(accuracyScore, 'emerald');
+                updateStatusBadgeUI('ผ่านแล้ว! 🎉', 'emerald', 'fa-circle-check');
+
+                // Trigger Canvas Confetti Blast
+                if (typeof confetti === 'function') {
+                    confetti({
+                        particleCount: 80,
+                        spread: 70,
+                        origin: { y: 0.6 }
+                    });
+                }
+            } else {
+                // FAIL
+                SoundFX.playWrong();
+                currentAREffect = 'horns';
+                updateAccuracyBarUI(accuracyScore, 'rose');
+                updateStatusBadgeUI('ไม่ผ่าน! 😈', 'rose', 'fa-circle-xmark');
+            }
+
+            // Keep Result and AR effect displayed for 3 seconds before moving to next question
+            setTimeout(() => {
+                currentQuestionIndex++;
+                startVocabularyTurn();
+            }, 3000);
+        }
+
+        /* =========================================================================
+           7. UI HELPER FUNCTIONS & OVERLAY MANAGERS
+           ========================================================================= */
+        function updateStatusBadgeUI(text, theme, icon) {
+            const badge = document.getElementById('ui-status-badge');
+            const statusText = document.getElementById('ui-status-text');
+
+            statusText.innerText = text;
+
+            if (theme === 'emerald') {
+                badge.className = 'inline-flex items-center gap-2 bg-emerald-100 text-emerald-800 border border-emerald-300 font-medium px-4 py-1.5 rounded-full text-xs sm:text-sm mb-3 shadow-sm transition-all duration-300';
+            } else if (theme === 'rose') {
+                badge.className = 'inline-flex items-center gap-2 bg-rose-100 text-rose-800 border border-rose-300 font-medium px-4 py-1.5 rounded-full text-xs sm:text-sm mb-3 shadow-sm transition-all duration-300';
+            } else {
+                badge.className = 'inline-flex items-center gap-2 bg-amber-100 text-amber-800 border border-amber-300 font-medium px-4 py-1.5 rounded-full text-xs sm:text-sm mb-3 shadow-sm transition-all duration-300 animate-pulse-slow';
+            }
+
+            badge.querySelector('i').className = `fa-solid ${icon}`;
+        }
+
+        function updateAccuracyBarUI(percent, theme) {
+            const bar = document.getElementById('ui-accuracy-bar');
+            const percentText = document.getElementById('ui-accuracy-percent');
+
+            percentText.innerText = `${percent}%`;
+            bar.style.width = `${percent}%`;
+
+            if (theme === 'emerald') {
+                bar.className = 'h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full transition-all duration-500 ease-out';
+                percentText.className = 'font-bold text-emerald-600 text-base';
+            } else if (theme === 'rose') {
+                bar.className = 'h-full bg-gradient-to-r from-rose-500 to-red-600 rounded-full transition-all duration-500 ease-out';
+                percentText.className = 'font-bold text-rose-600 text-base';
+            } else {
+                bar.className = 'h-full bg-gradient-to-r from-pink-500 to-orange-400 rounded-full transition-all duration-500 ease-out';
+                percentText.className = 'font-bold text-pink-600 text-base';
+            }
+        }
+
+        function finishGameAndShowSummary() {
+            clearInterval(countdownInterval);
+            currentAREffect = 'none';
+
+            document.getElementById('end-final-score').innerText = `${totalScore} / ${VOCABULARY_LIST.length}`;
+
+            const endModal = document.getElementById('overlay-end-screen');
+            const emojiEl = document.getElementById('end-result-emoji');
+            const titleEl = document.getElementById('end-title-text');
+            const subtitleEl = document.getElementById('end-subtitle-text');
+
+            if (totalScore >= 8) {
+                // High Score Win
+                SoundFX.playFanfare();
+                emojiEl.innerText = '👑';
+                titleEl.innerText = 'สุดยอดมากๆ! เจ้าแห่งคำศัพท์';
+                subtitleEl.innerText = 'คุณฝึกพูดได้เป๊ะและผ่านเกณฑ์ระดับยอดเยี่ยม!';
+                
+                if (typeof confetti === 'function') {
+                    confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 } });
+                }
+            } else {
+                // Game Over Try Again
+                SoundFX.playGameOver();
+                emojiEl.innerText = '🎮';
+                titleEl.innerText = 'พยายามได้ดีมาก!';
+                subtitleEl.innerText = 'ฝึกซ้อมออกเสียงอีกนิด รับรองว่าจะได้มงกุฎแน่นอน!';
+            }
+
+            endModal.classList.remove('hidden');
+        }
+
+        function restartGame() {
+            SoundFX.playClick();
+            document.getElementById('overlay-end-screen').classList.add('hidden');
+            currentQuestionIndex = 0;
+            totalScore = 0;
+            startVocabularyTurn();
+        }
+
+        // Initialize Web Audio API on initial user gesture
+        window.addEventListener('click', () => {
+            SoundFX.init();
+        }, { once: true });
+    </script>
+</body>
+</html>
